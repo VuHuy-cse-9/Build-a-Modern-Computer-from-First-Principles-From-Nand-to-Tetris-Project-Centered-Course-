@@ -1,0 +1,62 @@
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/05/Memory.hdl
+
+/**
+ * The complete address space of the Hack computer's memory,
+ * including RAM and memory-mapped I/O. 
+ * The chip facilitates read and write operations, as follows:
+ *     Read:  out(t) = Memory[address(t)](t)
+ *     Write: if load(t-1) then Memory[address(t-1)](t) = in(t-1)
+ * In words: the chip always outputs the value stored at the memory 
+ * location specified by address. If load==1, the in value is loaded 
+ * into the memory location specified by address. This value becomes 
+ * available through the out output from the next time step onward.
+ * Address space rules:
+ * Only the upper 16K+8K+1 words of the Memory chip are used. 
+ * Access to address>0x6000 is invalid. Access to any address in 
+ * the range 0x4000-0x5FFF results in accessing the screen memory 
+ * map. Access to address 0x6000 results in accessing the keyboard 
+ * memory map. The behavior in these addresses is described in the 
+ * Screen and Keyboard chip specifications given in the book.
+ */
+
+CHIP Memory {
+    IN in[16], load, address[15];
+    OUT out[16];
+
+    PARTS:
+    // Put your code here:
+    //Neu load = 0, out = value store tai address
+    //Neu load = 1, van nhu load = 0. Tuy nhien, memory[address] = in, gia tri nay 
+    //chi available tai next time step.
+    //RAM16K, 2 RAM4K, 1 Register:
+    //address > 16k
+    //Neu address[14] == 0, address nho hon 16K, con khong lon hon 16k.
+    //Tinh in:
+    DMux8Way(in=load, sel=address[12..14], a=r161, b=r162, c=r163, d=r164, e=r41, f=r42, g=r, h=dump);
+    Or(a=r161, b=r162, out=r16);
+    Or(a=r16, b=r163, out=rs16);
+    Or(a=rs16, b=r164, out=rt16);
+    //Tinh ket qua RAM16K
+    RAM16K(in=in, load=rt16, address=address[0..13], out=o1);
+    //Tinh ket qua RAM8K = 2 RAM 4K
+    RAM4K(in=in, load=r41, address=address[0..11], out=o2);
+    RAM4K(in=in, load=r42, address=address[0..11], out=o3);
+    Or(a=r41, b=r42, out=r4);
+    //Tinh ket qua Register
+    Keyboard(out=keyboardoutput);
+    Screen(in=in, address=address[0..12], load=r4, out=outScr);
+    Register(in=in, load=r, out=o4);
+    Or16(a=o4, b=keyboardoutput, out=o5);
+
+
+    //Tinh select.
+    //  110 => Register
+    //  100 => RAM4K_1
+    //  101 => RAM4K_2
+    //  000, 001, 010, 011 => RAM16K
+    //Ket qua tu RAM16k, RAM 8k, Register duoc cho qua Mux.
+    Mux8Way16(a=o1, b=o1, c=o1, d=o1, e=outScr, f=outScr, g=o5, h=o5, sel=address[12..14], out=out);
+}

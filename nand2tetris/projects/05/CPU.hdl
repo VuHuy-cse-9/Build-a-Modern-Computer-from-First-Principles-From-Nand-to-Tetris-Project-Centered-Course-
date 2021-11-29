@@ -1,0 +1,117 @@
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/05/CPU.hdl
+
+/**
+ * The Hack CPU (Central Processing unit), consisting of an ALU,
+ * two registers named A and D, and a program counter named PC.
+ * The CPU is designed to fetch and execute instructions written in 
+ * the Hack machine language. In particular, functions as follows:
+ * Executes the inputted instruction according to the Hack machine 
+ * language specification. The D and A in the language specification
+ * refer to CPU-resident registers, while M refers to the external
+ * memory location addressed by A, i.e. to Memory[A]. The inM input 
+ * holds the value of this location. If the current instruction needs 
+ * to write a value to M, the value is placed in outM, the address 
+ * of the target location is placed in the addressM output, and the 
+ * writeM control bit is asserted. (When writeM==0, any value may 
+ * appear in outM). The outM and writeM outputs are combinational: 
+ * they are affected instantaneously by the execution of the current 
+ * instruction. The addressM and pc outputs are clocked: although they 
+ * are affected by the execution of the current instruction, they commit 
+ * to their new values only in the next time step. If reset==1 then the 
+ * CPU jumps to address 0 (i.e. pc is set to 0 in next time step) rather 
+ * than to the address resulting from executing the current instruction. 
+ */
+
+CHIP CPU {
+
+    IN  inM[16],         // M value input  (M = contents of RAM[A])
+        instruction[16], // Instruction for execution
+        reset;           // Signals whether to re-start the current
+                         // program (reset==1) or continue executing
+                         // the current program (reset==0).
+
+    OUT outM[16],        // M value output
+        writeM,          // Write to M? 
+        addressM[15],    // Address in data memory (of M)
+        pc[15];          // address of next instruction
+
+    PARTS:
+    //////////////////////////////////////////////////////////////
+    // Tinh control bit cho thanh ghi A, D, M: Khong circle///////
+    /////////////////////////////////////////////////////////////
+    DMux8Way(in=true, sel=instruction[3..5], a=dump, b=M, c=D, d=MD, e=A, f=AM, g=AD, h=AMD);
+    // + A
+    Or(a=AD, b=AMD, out=a1);
+    Or(a=a1, b=AM, out=a2);
+    Or(a=a2, b=A, out=loadA);
+    Not(in=instruction[15], out=nota);                              //nota de chuyen che do load ARegister.
+    Mux(a=nota, b=loadA, sel=instruction[15], out=loadA2);          //Neu A-instruction thi load = 1. Nguoc lai, tuy thuoc loadA o tren la 0, 1 ma co load hay khong.
+   
+    //+ D
+    Or(a=AD, b=AMD, out=d1);
+    Or(a=d1, b=MD, out=d2);
+    Or(a=d2, b=D, out=loadD);
+    And(a=instruction[15], b=loadD, out=loadD2); //Neu instruction[15] == 0 => instruction A => Only gan gia tri A.
+
+    //+ M
+    Or(a=AM, b=AMD, out=m1);
+    Or(a=m1, b=MD, out=m2);
+    Or(a=m2, b=M, out=loadM);
+    And(a=instruction[15], b=loadM, out=writeM); //Neu instruction[15] == 0 => instruction A => Only gan gia tri A.
+    //////////////////////////
+    /////Cap nhat thanh ghi///
+    //////////////////////////
+
+    //Tinh ARegister:
+    //Mux16 dau tien:
+    Mux16(a=instruction, b=aluOutput, sel=instruction[15], out=inA); //Neu A-instruction, AReg = instruction, else Areg = aluOutput
+    ARegister(in=inA, load=loadA2, out=outA, out[0..14]=addressM);
+
+    //Tinh DRegister:
+    DRegister(in=aluOutput, load=loadD2, out=outD);
+
+    ///////////////////////////
+    // Tinh toan C instruction/
+    ///////////////////////////
+    Mux16(a=outA, b=inM, sel=instruction[12], out=inComp);
+    // + Tinh comp
+    ALU(x=outD, 
+        y=inComp, 
+        zx=instruction[11], 
+        nx=instruction[10], 
+        zy=instruction[9], 
+        ny=instruction[8],
+        f=instruction[7], 
+        no=instruction[6], 
+        out=aluOutput, 
+        out=outM, //outM khong phu thuoc vao writeM
+        zr=iszero, 
+        ng=isng);
+
+    ///////////////////////////
+    //////Tinh jump////////////
+    ///////////////////////////
+    //Xet out > 0:
+    Not(in=isng, out=ispos); //Truong hop = 0 => 
+    Not(in=iszero, out=notzero);
+    And(a=notzero, b=ispos, out=ispos2);
+    //Xet xem co jump hay khong:
+    //out < 0
+    And(a=isng, b=instruction[2], out=jump1);
+    //out = 0
+    And(a=iszero, b=instruction[1], out=jump2);
+    //out > 0
+    And(a=ispos2, b=instruction[0], out=jump3);
+    Or(a=jump1, b=jump2, out=jump4);
+    Or(a=jump3, b=jump4, out=jump5); //jump5: 1 la jump, nguoc lai la 0
+    And(a=instruction[15], b=jump5, out=jump6); //Neu A-instruction thi khong can jump.
+
+    //Increase PC++:
+    //Neu reset = 1 => pc = 0
+    //Neu jump6 = 1 => jump toi address outA
+    //Neu jump6 = 0 => Tang pc len 1
+    PC(in=outA, load=jump6, inc=true, reset=reset, out[0..14]= pc);
+}
